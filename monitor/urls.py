@@ -12,4 +12,6 @@ urlpatterns = [
     path('api/history/', views.get_history_data, name='get_history'),
     path('api/economics/', views.get_financial_data, name='api_economics'),
     path('api/toggle/', views.toggle_relays, name='toggle_relays'),
+    path('api/energy-data/', views.get_energy_data, name='get_energy_data'),
+    path('api/simulator/', views.update_simulator, name='update_simulator'),
 ]

@@ -2,162 +2,133 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SEMS | Financial Report</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
     <style>
-        body { background-color: #f3f4f6; font-family: 'Segoe UI', sans-serif; }
-        
-        /* Sidebar (Matching Dashboard) */
+        :root {
+            --primary-bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-dark: #1f2937;
+        }
+        body { background-color: var(--primary-bg); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .sidebar { height: 100vh; position: fixed; top: 0; left: 0; width: 250px; background: #111827; color: white; padding: 20px; }
         .main-content { margin-left: 250px; padding: 30px; }
-        .nav-link { color: #9ca3af; padding: 10px; border-radius: 5px; margin-bottom: 5px; text-decoration: none; display: block; }
-        .nav-link:hover { background-color: #374151; color: white; }
-        .nav-link.active { background-color: #374151; color: white; }
-        
-        /* Cards */
-        .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); background: white; padding: 20px; margin-bottom: 20px; }
-        .money-val { font-size: 1.5rem; font-weight: bold; }
-        .text-rupee { color: #16a34a; } /* Green for profit */
-        .text-expense { color: #dc2626; } /* Red for cost */
+        .nav-link { color: #9ca3af; padding: 10px; border-radius: 5px; margin-bottom: 5px; text-decoration: none; display: block; cursor: pointer; }
+        .nav-link:hover, .nav-link.active { background-color: #374151; color: white; }
+        .nav-link i { margin-right: 10px; width: 20px; }
+        .chart-container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .stat-value { font-size: 2.5rem; font-weight: 700; }
+        .stat-label { font-size: 0.9rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+        @media (max-width: 768px) { .sidebar { width: 100%; height: auto; position: relative; } .main-content { margin-left: 0; } }
     </style>
 </head>
 <body>
-
-    <div class="sidebar">
+    <div class="sidebar d-flex flex-column">
         <h3 class="mb-4"><i class="fas fa-bolt text-warning"></i> SEMS</h3>
         <nav class="nav flex-column">
             <a href="{% url 'dashboard' %}" class="nav-link"><i class="fas fa-chart-line"></i> Dashboard</a>
-            
             <a href="{% url 'economics' %}" class="nav-link active"><i class="fas fa-rupee-sign"></i> Financial Report</a>
-            
             <a href="/admin/" class="nav-link mt-auto"><i class="fas fa-cog"></i> System Admin</a>
         </nav>
     </div>
 
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>Financial & Energy Report</h2>
-            <div class="btn-group">
-                <button class="btn btn-outline-secondary" onclick="loadData('week')">This Week</button>
-                <button class="btn btn-outline-secondary active" onclick="loadData('month')">This Month</button>
-                <button class="btn btn-outline-secondary" onclick="loadData('year')">This Year</button>
+            <div><h2 class="fw-bold">AI Financial & Environmental Impact</h2><p class="text-muted">Analyze your ROI and carbon footprint reduction.</p></div>
+            <div class="btn-group shadow-sm">
+                <button class="btn btn-outline-primary" id="btn-week" onclick="loadEconomics('week')">7 Days</button>
+                <button class="btn btn-outline-primary active" id="btn-month" onclick="loadEconomics('month')">30 Days</button>
+                <button class="btn btn-outline-primary" id="btn-year" onclick="loadEconomics('year')">1 Year</button>
             </div>
         </div>
 
-        <div class="card-custom">
-            <h5><i class="fas fa-wallet me-2"></i>Profit vs Cost Analysis</h5>
-            <div style="height: 300px;">
-                <canvas id="moneyChart"></canvas>
+        <!-- AI SAVINGS PANEL (DARK) -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="chart-container" style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); color: white; border: 1px solid #3b82f6;">
+                    <h5 class="fw-bold mb-4 text-info"><i class="fas fa-robot me-2"></i> Total AI Savings Generated</h5>
+                    <div class="row text-center">
+                        <div class="col-md-4 mb-3 border-end border-secondary">
+                            <div class="stat-label text-muted">Total Money Saved</div>
+                            <div class="stat-value text-success">₹ <span id="val_ai_money">0</span></div>
+                        </div>
+                        <div class="col-md-4 mb-3 border-end border-secondary">
+                            <div class="stat-label text-muted">Diesel Fuel Preserved</div>
+                            <div class="stat-value text-warning"><span id="val_ai_fuel">0</span> <span class="fs-4">Liters</span></div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="stat-label text-muted">CO2 Emissions Avoided</div>
+                            <div class="stat-value text-info"><span id="val_ai_co2">0</span> <span class="fs-4">kg</span></div>
+                            <div class="small text-muted mt-2">Equivalent to planting <span id="val_ai_trees" class="fw-bold text-success">0</span> trees</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row g-4">
             <div class="col-md-4">
-                <div class="card-custom border-top border-warning border-4">
-                    <h6 class="text-muted text-uppercase">Solar Generated</h6>
-                    <div class="money-val text-warning"><span id="solar-units">0</span> kWh</div>
-                    <small>Value Saved: ₹<span id="solar-val">0</span></small>
-                    <hr>
-                    <table class="table table-sm mt-3">
-                        <tr><td>Source:</td><td>INA-219 (1)</td></tr>
-                        <tr><td>Status:</td><td><span class="badge bg-success">Active</span></td></tr>
-                    </table>
+                <div class="chart-container h-100" style="border-left: 5px solid #f59e0b;">
+                    <h5 class="fw-bold text-warning mb-3"><i class="fas fa-sun me-2"></i> Solar Generated</h5>
+                    <div class="stat-value text-dark mb-1"><span id="val_solar_units">0</span> <span class="fs-5 text-muted">kWh</span></div>
+                    <div class="text-success fw-bold">Value: ₹ <span id="val_solar_money">0</span></div>
+                    <p class="text-muted small mt-3">Total energy harnessed from the polar solar array.</p>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="chart-container h-100" style="border-left: 5px solid #10b981;">
+                    <h5 class="fw-bold text-success mb-3"><i class="fas fa-coins me-2"></i> Energy Sold (Grid)</h5>
+                    <div class="stat-value text-dark mb-1"><span id="val_sold_units">0</span> <span class="fs-5 text-muted">kWh</span></div>
+                    <div class="text-success fw-bold">Profit: ₹ <span id="val_sold_money">0</span></div>
+                    <p class="text-muted small mt-3">Excess solar stored in battery and exported to the macro-grid.</p>
                 </div>
             </div>
 
             <div class="col-md-4">
-                <div class="card-custom border-top border-success border-4">
-                    <h6 class="text-muted text-uppercase">Sold to Grid</h6>
-                    <div class="money-val text-rupee"><span id="sold-units">0</span> kWh</div>
-                    <small>Profit Earned: ₹<span id="sold-val">0</span></small>
-                    <hr>
-                    <table class="table table-sm mt-3">
-                        <tr><td>Source:</td><td>INA-219 (2)</td></tr>
-                        <tr><td>Condition:</td><td>Sell Mode Active</td></tr>
-                        <tr><td>Rate:</td><td>₹4.00 / Unit</td></tr>
-                    </table>
-                </div>
-            </div>
-
-            <div class="col-md-4">
-                <div class="card-custom border-top border-danger border-4">
-                    <h6 class="text-muted text-uppercase">Bought from Grid</h6>
-                    <div class="money-val text-expense"><span id="bought-units">0</span> kWh</div>
-                    <small>Total Cost: ₹<span id="bought-val">0</span></small>
-                    <hr>
-                    <table class="table table-sm mt-3">
-                        <tr><td>Source:</td><td>PZEM-004T</td></tr>
-                        <tr><td>Rate:</td><td>₹8.00 / Unit</td></tr>
-                    </table>
+                <div class="chart-container h-100" style="border-left: 5px solid #ef4444;">
+                    <h5 class="fw-bold text-danger mb-3"><i class="fas fa-plug me-2"></i> Energy Bought (Grid)</h5>
+                    <div class="stat-value text-dark mb-1"><span id="val_bought_units">0</span> <span class="fs-5 text-muted">kWh</span></div>
+                    <div class="text-danger fw-bold">Cost: ₹ <span id="val_bought_money">0</span></div>
+                    <p class="text-muted small mt-3">Energy imported when AI determined battery & generator were insufficient.</p>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        let moneyChart = null;
-
-        function loadData(period) {
+        function loadEconomics(period) {
             // Update button styles
-            document.querySelectorAll('.btn-group .btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            ['btn-week', 'btn-month', 'btn-year'].forEach(id => document.getElementById(id).classList.remove('active'));
+            document.getElementById(`btn-${period}`).classList.add('active');
 
-            // Fetch Financial Data
             fetch(`/api/economics/?period=${period}`)
                 .then(r => r.json())
                 .then(data => {
-                    // 1. Update Text Data
-                    document.getElementById('solar-units').innerText = data.solar_units;
-                    document.getElementById('solar-val').innerText = data.solar_value;
+                    // Update AI Panel
+                    document.getElementById('val_ai_money').innerText = data.ai_total_savings.toLocaleString();
+                    document.getElementById('val_ai_fuel').innerText = data.fuel_saved_liters.toLocaleString();
+                    document.getElementById('val_ai_co2').innerText = data.co2_avoided_kg.toLocaleString();
+                    document.getElementById('val_ai_trees').innerText = Math.round(data.co2_avoided_kg / 21); // ~21kg CO2 per tree/year
                     
-                    document.getElementById('sold-units').innerText = data.sold_units;
-                    document.getElementById('sold-val').innerText = data.sold_profit;
+                    // Update Grid panels
+                    document.getElementById('val_solar_units').innerText = data.solar_units.toLocaleString();
+                    document.getElementById('val_solar_money').innerText = data.solar_value.toLocaleString();
                     
-                    document.getElementById('bought-units').innerText = data.bought_units;
-                    document.getElementById('bought-val').innerText = data.bought_cost;
-
-                    // 2. Update Bar Chart
-                    const ctx = document.getElementById('moneyChart').getContext('2d');
-                    if(moneyChart) moneyChart.destroy();
-
-                    moneyChart = new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: ['Grid Bill (Cost)', 'Grid Earnings (Profit)', 'Solar Savings'],
-                            datasets: [{
-                                label: 'Amount in Rupees (₹)',
-                                data: [data.bought_cost, data.sold_profit, data.solar_value],
-                                backgroundColor: [
-                                    'rgba(220, 38, 38, 0.6)',  // Red
-                                    'rgba(22, 163, 74, 0.6)',   // Green
-                                    'rgba(245, 158, 11, 0.6)'   // Orange
-                                ],
-                                borderColor: [
-                                    'rgba(220, 38, 38, 1)',
-                                    'rgba(22, 163, 74, 1)',
-                                    'rgba(245, 158, 11, 1)'
-                                ],
-                                borderWidth: 1
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { display: false }
-                            }
-                        }
-                    });
+                    document.getElementById('val_sold_units').innerText = data.sold_units.toLocaleString();
+                    document.getElementById('val_sold_money').innerText = data.sold_profit.toLocaleString();
+                    
+                    document.getElementById('val_bought_units').innerText = data.bought_units.toLocaleString();
+                    document.getElementById('val_bought_money').innerText = data.bought_cost.toLocaleString();
                 });
         }
-
-        // Load Month by default on page load
-        loadData('month');
+        
+        // Initial load
+        loadEconomics('month');
     </script>
 </body>
 </html>

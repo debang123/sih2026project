@@ -44,6 +44,15 @@
             padding: 10px; border-radius: 6px; margin-bottom: 20px; display: block; box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
         }
         .chart-container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-top: 30px; }
+        
+        /* ENERGY FLOW MAP */
+        .flow-diagram { font-family: 'Courier New', Courier, monospace; font-size: 1.2rem; font-weight: bold; line-height: 1.2; text-align: center; }
+        .flow-active { color: #10b981 !important; text-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
+        .flow-active-danger { color: #ef4444 !important; text-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+        .flow-active-warning { color: #f59e0b !important; text-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+        .flow-inactive { color: #d1d5db; }
+        .flow-box { border: 2px solid #e5e7eb; border-radius: 8px; padding: 10px; display: inline-block; min-width: 120px; background: white; }
+        
         @media (max-width: 768px) { .sidebar { width: 100%; height: auto; position: relative; } .main-content { margin-left: 0; } }
     </style>
 </head>
@@ -65,6 +74,8 @@
             <div class="badge bg-success p-2" id="status-badge"><i class="fas fa-wifi"></i> System Online</div>
         </div>
 
+        <div id="anomaly_container"></div>
+
         <div class="row g-4">
             <div class="col-md-3">
                 <div class="stat-card solar">
@@ -76,30 +87,37 @@
             <div class="col-md-3">
                 <div class="stat-card battery">
                     <div class="icon-box text-success"><i class="fas fa-car-battery fa-2x"></i></div>
-                    <div class="stat-title">Battery</div>
-                    <div class="stat-value"><span id="bat_pct">0</span> <span class="fs-6 text-muted">%</span></div>
+                    <div class="stat-title">Battery (<span id="bat_temp">20</span>°C)</div>
+                    <div class="stat-value"><span id="bat_pct">0</span> <span class="fs-6 text-muted">% True</span></div>
                     <div class="progress"><div id="bat-bar" class="progress-bar bg-success" style="width: 0%"></div></div>
+                    <div class="mt-2 text-muted small fw-bold">Usable SOC: <span id="bat_usable">0</span>%</div>
+                    <div class="text-danger small fw-bold mt-1" id="bat_warning" style="display:none;"><i class="fas fa-exclamation-triangle"></i> Temp Limit Active</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="stat-card grid">
-                    <div class="icon-box text-primary"><i class="fas fa-network-wired fa-2x"></i></div>
-                    <div class="stat-title">Grid Import</div>
-                    <div class="stat-value"><span id="grid">0.0</span> <span class="fs-6 text-muted">W</span></div>
+                    <div class="icon-box text-primary"><i class="fas fa-gas-pump fa-2x"></i></div>
+                    <div class="stat-title">Backup Gen</div>
+                    <div class="stat-value"><span id="gen">0.0</span> <span class="fs-6 text-muted">W</span></div>
+                    <div class="mt-2 text-muted small fw-bold">Fuel: <span id="fuel_pct">100</span>%</div>
+                    <div class="text-muted small fw-bold mt-1">Usage: <span id="fuel_rate">0.0</span> L/hr</div>
+                    <div class="text-info small fw-bold mt-1"><i class="fas fa-clock"></i> Run: <span id="fuel_time">--</span> hr</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="stat-card">
                     <div class="icon-box text-danger"><i class="fas fa-lightbulb fa-2x"></i></div>
-                    <div class="stat-title">Consumption</div>
+                    <div class="stat-title">Total Load</div>
                     <div class="stat-value"><span id="bat_out">0.0</span> <span class="fs-6 text-muted">W</span></div>
+                    <div class="mt-2 text-muted small fw-bold">Active Circuits: <span id="circuits_active">3/3</span></div>
                 </div>
             </div>
         </div>
 
-        <div class="row mt-2">
-            <div class="col-lg-8">
-                <div class="chart-container">
+        <div class="row mt-4">
+            <!-- POWER TRENDS CHART -->
+            <div class="col-lg-7">
+                <div class="chart-container h-100">
                     <div class="d-flex justify-content-between mb-3">
                         <h5 class="fw-bold">Power Trends</h5>
                         <div class="btn-group btn-group-sm">
@@ -107,43 +125,276 @@
                             <button class="btn btn-outline-secondary" onclick="loadChart('week')">Week</button>
                         </div>
                     </div>
-                    <canvas id="energyChart" height="130"></canvas>
+                    <canvas id="energyChart" height="180"></canvas>
                 </div>
             </div>
 
-            <div class="col-lg-4">
-                <div class="chart-container h-100">
-                    <h5 class="fw-bold mb-3">System Control</h5>
-                    <div id="status-indicator" class="status-badge alert-secondary text-center"><i class="fas fa-spinner fa-spin"></i> SYNCING...</div>
-                    <p class="text-muted small mb-3">Select Operation Mode:</p>
+            <!-- LIVE ENERGY FLOW VISUALIZATION -->
+            <div class="col-lg-5">
+                <div class="chart-container h-100 d-flex flex-column justify-content-center align-items-center" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <h5 class="fw-bold mb-4 w-100 text-start"><i class="fas fa-project-diagram text-secondary me-2"></i> Live Energy Flow</h5>
                     
-                    <button id="btn-mode-home" class="btn btn-mode w-100 mb-2 p-3 text-start border shadow-sm" onclick="setMode('home')">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box me-3 text-danger"><i class="fas fa-home fa-2x"></i></div>
-                            <div><h6 class="mb-0 fw-bold">Power Home</h6><small class="text-muted">Solar -> Home</small></div>
+                    <div class="flow-diagram w-100">
+                        <div class="flow-box text-warning" id="flow_box_solar">SOLAR<br><small id="flow_f_solar">0 W</small></div>
+                        <div id="flow_arrow_solar_down" class="flow-inactive mt-1">↓</div>
+                        <div class="d-flex justify-content-center">
+                            <div id="flow_split_left" class="flow-inactive text-end pe-1" style="width: 50%;">┌──────┴</div>
+                            <div id="flow_split_right" class="flow-inactive text-start ps-1" style="width: 50%;">──────┐</div>
                         </div>
-                    </button>
+                        <div class="d-flex justify-content-center mb-1">
+                            <div id="flow_arrow_load_down" class="flow-inactive" style="width: 50%;">↓</div>
+                            <div id="flow_arrow_bat_down" class="flow-inactive" style="width: 50%;">↓</div>
+                        </div>
+                        <div class="d-flex justify-content-center mb-2">
+                            <div style="width: 50%;" class="pe-2"><div class="flow-box text-danger w-100" id="flow_box_load">LOAD<br><small id="flow_f_load">0 W</small></div></div>
+                            <div style="width: 50%;" class="ps-2"><div class="flow-box text-success w-100" id="flow_box_bat">BATTERY<br><small id="flow_f_bat">0 %</small></div></div>
+                        </div>
+                        <div class="d-flex justify-content-center mb-1">
+                            <div id="flow_arrow_grid_up" class="flow-inactive" style="width: 50%;">↑</div>
+                            <div id="flow_arrow_gen_up" class="flow-inactive" style="width: 50%;">↑</div>
+                        </div>
+                        <div class="d-flex justify-content-center mb-1">
+                            <div id="flow_line_grid" class="flow-inactive" style="width: 50%;">│</div>
+                            <div id="flow_line_gen" class="flow-inactive" style="width: 50%;">│</div>
+                        </div>
+                        <div class="d-flex justify-content-center">
+                            <div style="width: 50%;" class="pe-2"><div class="flow-box text-primary w-100" id="flow_box_grid">GRID<br><small>OFFLINE</small></div></div>
+                            <div style="width: 50%;" class="ps-2"><div class="flow-box text-secondary w-100" id="flow_box_gen">GENERATOR<br><small id="flow_f_gen">0 W</small></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-                    <button id="btn-mode-sell" class="btn btn-mode w-100 mb-2 p-3 text-start border shadow-sm" onclick="setMode('grid_sell')">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box me-3 text-primary"><i class="fas fa-network-wired fa-2x"></i></div>
-                            <div><h6 class="mb-0 fw-bold">Sell to Grid</h6><small class="text-muted">Solar -> Grid</small></div>
-                        </div>
-                    </button>
+        <!-- LOAD MANAGEMENT PANEL -->
+        <div class="row mt-4">
+            <div class="col-lg-12">
+                <div class="chart-container" style="background: white; border: 1px solid #e5e7eb;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="fw-bold m-0"><i class="fas fa-network-wired text-danger me-2"></i> Active Load Distribution</h4>
+                        <span class="badge bg-success p-2" id="load-status-badge">Normal Operations</span>
+                    </div>
 
-                    <button id="btn-mode-import" class="btn btn-mode w-100 mb-2 p-3 text-start border shadow-sm" onclick="setMode('grid_import')">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box me-3 text-warning"><i class="fas fa-plug fa-2x"></i></div>
-                            <div><h6 class="mb-0 fw-bold">Use Main Grid</h6><small class="text-muted">Grid -> Home</small></div>
+                    <div class="row g-4">
+                        <!-- Critical Load -->
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded h-100" style="background: #fffafa; border-color: #fecaca !important;">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <h6 class="fw-bold text-danger m-0">Critical Priority</h6>
+                                    <span class="badge bg-danger">Never Shed</span>
+                                </div>
+                                <ul class="text-muted small mb-3 ps-3">
+                                    <li>Medical Equipment</li>
+                                    <li>Communications</li>
+                                    <li>Heating Systems</li>
+                                    <li>Emergency Lighting</li>
+                                </ul>
+                                <h3 class="fw-bold text-dark m-0"><span id="val_crit">0.0</span> <span class="fs-6 text-muted">W</span></h3>
+                            </div>
                         </div>
-                    </button>
 
-                    <button id="btn-mode-charge" class="btn btn-mode w-100 mb-2 p-3 text-start border shadow-sm" onclick="setMode('charge')">
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box me-3 text-success"><i class="fas fa-battery-charging fa-2x"></i></div>
-                            <div><h6 class="mb-0 fw-bold">Charge Battery</h6><small class="text-muted">All Output OFF</small></div>
+                        <!-- Important Load -->
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded h-100" id="card_imp" style="background: #f0fdfa; border-color: #99f6e4 !important;">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <h6 class="fw-bold text-success m-0" id="title_imp">Important Priority</h6>
+                                    <span class="badge bg-success" id="badge_imp">Active</span>
+                                </div>
+                                <ul class="text-muted small mb-3 ps-3">
+                                    <li>Normal Lighting</li>
+                                    <li>Refrigeration</li>
+                                    <li>Water Systems</li>
+                                </ul>
+                                <h3 class="fw-bold text-dark m-0"><span id="val_imp">0.0</span> <span class="fs-6 text-muted">W</span></h3>
+                            </div>
                         </div>
-                    </button>
+
+                        <!-- Non-Critical Load -->
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded h-100" id="card_nc" style="background: #f8fafc; border-color: #e2e8f0 !important;">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <h6 class="fw-bold text-secondary m-0" id="title_nc">Non-Critical Priority</h6>
+                                    <span class="badge bg-secondary" id="badge_nc">Active</span>
+                                </div>
+                                <ul class="text-muted small mb-3 ps-3">
+                                    <li>Workshop Tools</li>
+                                    <li>EV Charging</li>
+                                    <li>Optional Equipment</li>
+                                </ul>
+                                <h3 class="fw-bold text-dark m-0"><span id="val_nc">0.0</span> <span class="fs-6 text-muted">W</span></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI OPTIMIZER PANEL -->
+        <div class="row mt-4">
+            <div class="col-lg-12">
+                <div class="chart-container" style="background: linear-gradient(135deg, #1e1e2d 0%, #151521 100%); border: 1px solid #3f3f5a; color: white;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="fw-bold m-0 text-white"><i class="fas fa-brain text-info me-2"></i> AI Energy Optimizer</h4>
+                        <span class="badge bg-primary p-2"><i class="fas fa-bolt"></i> Neural Engine Active</span>
+                    </div>
+
+                    <div class="row g-4">
+                        <!-- AI Forecast -->
+                        <div class="col-md-6">
+                            <div class="p-4 rounded h-100" style="background: rgba(255,255,255,0.05);">
+                                <h5 class="text-info fw-bold mb-4"><i class="fas fa-chart-pie me-2"></i> AI Forecast</h5>
+                                <div class="d-flex justify-content-between mb-3 border-bottom border-secondary pb-2">
+                                    <span class="fs-5">Next 6h Load:</span>
+                                    <span class="fw-bold text-danger fs-5"><span id="ai_6h_load">--</span> kWh</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-3 border-bottom border-secondary pb-2">
+                                    <span class="fs-5">Next 6h Solar:</span>
+                                    <span class="fw-bold text-success fs-5"><span id="ai_6h_solar">--</span> kWh</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-3 border-bottom border-secondary pb-2">
+                                    <span class="fs-5">Expected Energy Deficit:</span>
+                                    <span class="fw-bold text-warning fs-5"><span id="ai_6h_deficit">--</span> kWh</span>
+                                </div>
+                                <div class="d-flex justify-content-between pt-2">
+                                    <span class="fs-5">Expected Battery SOC:</span>
+                                    <span class="fw-bold text-primary fs-5"><span id="ai_6h_soc">--</span>%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Decisions -->
+                        <div class="col-md-6">
+                            <div class="p-4 rounded h-100" style="background: rgba(255,255,255,0.05);">
+                                <h5 class="text-info fw-bold mb-1"><i class="fas fa-microchip me-2"></i> AI Decision</h5>
+                                <h6 class="text-muted fw-bold mb-4">CURRENT RECOMMENDATION</h6>
+                                
+                                <div class="fs-5 lh-lg fw-bold">
+                                    <div id="rec_solar" class="text-success">→ Use Solar</div>
+                                    <div id="rec_bat" class="text-info">→ Charge Battery</div>
+                                    <div id="rec_gen" class="text-secondary">→ Generator OFF</div>
+                                    <div id="rec_shed" class="text-success">→ Non-critical Loads ON</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ENERGY SCHEDULE -->
+        <div class="row mt-4">
+            <div class="col-lg-12">
+                <div class="chart-container" style="background: white; border: 1px solid #e5e7eb;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="fw-bold m-0"><i class="fas fa-calendar-alt text-primary me-2"></i> Predicted Energy Schedule</h4>
+                        <span class="badge bg-secondary p-2">Next 24 Hours</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light text-muted small fw-bold">
+                                <tr>
+                                    <th>TIME</th>
+                                    <th>PRIMARY SOURCE</th>
+                                    <th>ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schedule_table_body">
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-4">Calculating AI schedule...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- POLAR ENVIRONMENT SIMULATOR -->
+        <div class="row mt-4 mb-5">
+            <div class="col-lg-12">
+                <div class="chart-container" style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); color: white; border: 1px solid #3b82f6; position: relative; overflow: hidden;">
+                    <!-- Decorative background element -->
+                    <div style="position: absolute; top: -50px; right: -50px; opacity: 0.1; font-size: 200px;"><i class="fas fa-snowflake"></i></div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="fw-bold m-0"><i class="fas fa-icicles text-info me-2"></i> Polar Environment Simulator</h4>
+                        <span class="badge bg-info text-dark" id="current-scenario">Scenario: Normal</span>
+                    </div>
+
+                    <div class="row g-4 position-relative z-index-1">
+                        <!-- Controls -->
+                        <div class="col-md-7">
+                            <div class="p-4 rounded" style="background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
+                                <h6 class="fw-bold text-info mb-3 text-uppercase tracking-wider">Environmental Variables</h6>
+                                
+                                <div class="row mb-3 align-items-center">
+                                    <div class="col-4"><label><i class="fas fa-thermometer-half text-danger me-2"></i> Temperature</label></div>
+                                    <div class="col-6"><input type="range" class="form-range" id="sim-temp" min="-60" max="10" value="-5" onchange="updateSim()"></div>
+                                    <div class="col-2 text-end fw-bold"><span id="val-temp">-5</span>°C</div>
+                                </div>
+                                
+                                <div class="row mb-3 align-items-center">
+                                    <div class="col-4"><label><i class="fas fa-cloud text-secondary me-2"></i> Cloud Cover</label></div>
+                                    <div class="col-6"><input type="range" class="form-range" id="sim-cloud" min="0" max="100" value="20" onchange="updateSim()"></div>
+                                    <div class="col-2 text-end fw-bold"><span id="val-cloud">20</span>%</div>
+                                </div>
+
+                                <div class="row mb-3 align-items-center">
+                                    <div class="col-4"><label><i class="fas fa-sun text-warning me-2"></i> Solar Avail.</label></div>
+                                    <div class="col-6"><input type="range" class="form-range" id="sim-solar" min="0" max="100" value="100" onchange="updateSim()"></div>
+                                    <div class="col-2 text-end fw-bold"><span id="val-solar">100</span>%</div>
+                                </div>
+                                
+                                <div class="row mb-3 align-items-center">
+                                    <div class="col-4"><label><i class="fas fa-wind text-info me-2"></i> Wind Speed</label></div>
+                                    <div class="col-6"><input type="range" class="form-range" id="sim-wind" min="0" max="150" value="10" onchange="updateSim()"></div>
+                                    <div class="col-2 text-end fw-bold"><span id="val-wind">10</span> km/h</div>
+                                </div>
+                                
+                                <div class="row mb-3 align-items-center">
+                                    <div class="col-4"><label><i class="fas fa-gas-pump text-primary me-2"></i> Fuel Level</label></div>
+                                    <div class="col-6"><input type="range" class="form-range" id="sim-fuel" min="0" max="100" value="100" onchange="updateSim()"></div>
+                                    <div class="col-2 text-end fw-bold"><span id="val-fuel">100</span>%</div>
+                                </div>
+
+                                <div class="row align-items-center">
+                                    <div class="col-4"><label><i class="fas fa-snowflake text-white me-2"></i> Snow</label></div>
+                                    <div class="col-8">
+                                        <select class="form-select form-select-sm bg-dark text-white border-secondary" id="sim-snow" onchange="updateSim()">
+                                            <option value="None">None</option>
+                                            <option value="Light">Light</option>
+                                            <option value="Heavy">Heavy</option>
+                                            <option value="Blizzard">Blizzard</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scenarios -->
+                        <div class="col-md-5">
+                            <div class="p-4 rounded h-100" style="background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
+                                <h6 class="fw-bold text-info mb-3 text-uppercase tracking-wider">SIH Demo Scenarios</h6>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-outline-light btn-sm text-start" onclick="applyScenario('Normal')">
+                                        <i class="fas fa-check-circle text-success me-2"></i> 1. Normal (Healthy System)
+                                    </button>
+                                    <button class="btn btn-outline-light btn-sm text-start" onclick="applyScenario('Extreme Cold')">
+                                        <i class="fas fa-temperature-empty text-primary me-2"></i> 2. Extreme Cold (-25°C)
+                                    </button>
+                                    <button class="btn btn-outline-light btn-sm text-start" onclick="applyScenario('Polar Night')">
+                                        <i class="fas fa-moon text-secondary me-2"></i> 3. Polar Night (0% Solar)
+                                    </button>
+                                    <button class="btn btn-outline-light btn-sm text-start" onclick="applyScenario('Heavy Snow')">
+                                        <i class="fas fa-snowflake text-white me-2"></i> 4. Heavy Snow (AI Shortage)
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm text-start" onclick="applyScenario('Fuel Constraint')">
+                                        <i class="fas fa-gas-pump me-2"></i> 5. Fuel Constraint (Low Fuel)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -156,16 +407,231 @@
                 .then(data => {
                     if(data.error) return;
                     document.getElementById('solar').innerText = data.solar.toFixed(1);
-                    document.getElementById('grid').innerText = data.grid.toFixed(1);
-                    document.getElementById('bat_out').innerText = data.battery_out.toFixed(1);
+                    document.getElementById('gen').innerText = data.gen.toFixed(1);
+                    document.getElementById('fuel_pct').innerText = data.fuel_pct.toFixed(1);
+                    document.getElementById('fuel_rate').innerText = data.fuel_rate.toFixed(1);
+                    document.getElementById('fuel_time').innerText = data.fuel_time > 0 ? data.fuel_time.toFixed(1) : '--';
+                    
+                    document.getElementById('bat_out').innerText = data.total_load.toFixed(1);
                     document.getElementById('bat_pct').innerText = Math.round(data.battery_pct);
+                    document.getElementById('bat_usable').innerText = Math.round(data.usable_soc || data.battery_pct);
+                    document.getElementById('bat_temp').innerText = (data.battery_temp || 20).toFixed(1);
+                    
+                    // Update Load Management Panel
+                    document.getElementById('val_crit').innerText = (data.load_critical || 0).toFixed(1);
+                    document.getElementById('val_imp').innerText = (data.load_important || 0).toFixed(1);
+                    document.getElementById('val_nc').innerText = (data.load_non_critical || 0).toFixed(1);
+                    
+                    let activeCircuits = 3;
+                    
+                    if (data.shed_non_critical) {
+                        document.getElementById('card_nc').style.background = '#fef2f2';
+                        document.getElementById('card_nc').style.borderColor = '#fecaca !important';
+                        document.getElementById('title_nc').className = 'fw-bold text-danger m-0';
+                        document.getElementById('badge_nc').className = 'badge bg-danger';
+                        document.getElementById('badge_nc').innerText = 'SHED (OFF)';
+                        activeCircuits--;
+                    } else {
+                        document.getElementById('card_nc').style.background = '#f8fafc';
+                        document.getElementById('card_nc').style.borderColor = '#e2e8f0 !important';
+                        document.getElementById('title_nc').className = 'fw-bold text-secondary m-0';
+                        document.getElementById('badge_nc').className = 'badge bg-secondary';
+                        document.getElementById('badge_nc').innerText = 'Active';
+                    }
+
+                    if (data.shed_important) {
+                        document.getElementById('card_imp').style.background = '#fef2f2';
+                        document.getElementById('card_imp').style.borderColor = '#fecaca !important';
+                        document.getElementById('title_imp').className = 'fw-bold text-danger m-0';
+                        document.getElementById('badge_imp').className = 'badge bg-danger';
+                        document.getElementById('badge_imp').innerText = 'SHED (OFF)';
+                        activeCircuits--;
+                    } else {
+                        document.getElementById('card_imp').style.background = '#f0fdfa';
+                        document.getElementById('card_imp').style.borderColor = '#99f6e4 !important';
+                        document.getElementById('title_imp').className = 'fw-bold text-success m-0';
+                        document.getElementById('badge_imp').className = 'badge bg-success';
+                        document.getElementById('badge_imp').innerText = 'Active';
+                    }
+                    
+                    document.getElementById('circuits_active').innerText = activeCircuits + '/3';
+                    
+                    const loadBadge = document.getElementById('load-status-badge');
+                    if (activeCircuits === 3) {
+                        loadBadge.className = 'badge bg-success p-2';
+                        loadBadge.innerHTML = '<i class="fas fa-check-circle"></i> Normal Operations';
+                    } else if (activeCircuits === 2) {
+                        loadBadge.className = 'badge bg-warning text-dark p-2';
+                        loadBadge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Stage 1 Shedding (EV/Workshop OFF)';
+                    } else {
+                        loadBadge.className = 'badge bg-danger p-2';
+                        loadBadge.innerHTML = '<i class="fas fa-skull-crossbones"></i> CRITICAL MODE (Life Support Only)';
+                    }
+                    
                     document.getElementById('last-sync').innerText = data.time;
+                    
+                    // --- ANOMALY DETECTION ---
+                    const anomalyContainer = document.getElementById('anomaly_container');
+                    anomalyContainer.innerHTML = '';
+                    if (data.anomalies && data.anomalies.length > 0) {
+                        data.anomalies.forEach(anomaly => {
+                            anomalyContainer.innerHTML += `
+                                <div class="alert alert-danger mb-4 shadow-sm" style="border-left: 5px solid #dc3545; background-color: #fff5f5;">
+                                    <h5 class="fw-bold text-danger"><i class="fas fa-exclamation-triangle me-2"></i> ANOMALY: ${anomaly.title}</h5>
+                                    <div class="row mt-3">
+                                        <div class="col-sm-3">
+                                            <div class="text-muted small fw-bold text-uppercase">Expected</div>
+                                            <div class="fs-5">${anomaly.expected}</div>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <div class="text-muted small fw-bold text-uppercase">Actual</div>
+                                            <div class="fs-5 fw-bold text-danger">${anomaly.actual}</div>
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <div class="text-muted small fw-bold text-uppercase">Possible Reason</div>
+                                            <div class="fs-6">${anomaly.reason}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    // --- ENERGY FLOW VISUALIZATION UPDATE ---
+                    document.getElementById('flow_f_solar').innerText = data.solar.toFixed(0) + ' W';
+                    document.getElementById('flow_f_load').innerText = data.total_load.toFixed(0) + ' W';
+                    document.getElementById('flow_f_bat').innerText = Math.round(data.battery_pct) + ' %';
+                    document.getElementById('flow_f_gen').innerText = data.gen.toFixed(0) + ' W';
+                    
+                    const setFlow = (id, isActive, colorClass) => {
+                        const el = document.getElementById(id);
+                        if(isActive) el.className = `flow-active${colorClass}`;
+                        else el.className = 'flow-inactive';
+                    };
+                    
+                    const solarActive = data.solar > 0;
+                    const isCharging = data.ai_decisions && data.ai_decisions.charge_battery;
+                    const batDischarging = data.battery_out > 0;
+                    const genActive = data.gen > 0;
+                    
+                    // Solar to split
+                    setFlow('flow_arrow_solar_down', solarActive, '-warning');
+                    
+                    // Battery Path (Directional)
+                    if (isCharging) {
+                        document.getElementById('flow_split_right').innerText = '──────┐';
+                        document.getElementById('flow_arrow_bat_down').innerText = '↓';
+                        setFlow('flow_split_right', true, '-success');
+                        setFlow('flow_arrow_bat_down', true, '-success');
+                    } else if (batDischarging) {
+                        document.getElementById('flow_split_right').innerText = '←─────┘';
+                        document.getElementById('flow_arrow_bat_down').innerText = '↑';
+                        setFlow('flow_split_right', true, '-success');
+                        setFlow('flow_arrow_bat_down', true, '-success');
+                    } else {
+                        document.getElementById('flow_split_right').innerText = '──────┐';
+                        document.getElementById('flow_arrow_bat_down').innerText = '↓';
+                        setFlow('flow_split_right', false, '');
+                        setFlow('flow_arrow_bat_down', false, '');
+                    }
+                    
+                    // Load Path
+                    if (solarActive || batDischarging) {
+                        document.getElementById('flow_split_left').innerText = '┌──────┴';
+                        setFlow('flow_split_left', true, solarActive ? '-warning' : '-success');
+                        setFlow('flow_arrow_load_down', true, solarActive ? '-warning' : '-success');
+                    } else {
+                        setFlow('flow_split_left', false, '');
+                        setFlow('flow_arrow_load_down', false, '');
+                    }
+                    
+                    // Generator Path
+                    setFlow('flow_arrow_gen_up', genActive, '');
+                    setFlow('flow_line_gen', genActive, '');
+                    
+                    // Box Highlights
+                    if (batDischarging) {
+                        document.getElementById('flow_box_bat').style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.8)';
+                        document.getElementById('flow_box_bat').style.borderColor = '#10b981';
+                    } else if (isCharging) {
+                        document.getElementById('flow_box_bat').style.boxShadow = '0 0 15px rgba(59, 130, 246, 0.8)';
+                        document.getElementById('flow_box_bat').style.borderColor = '#3b82f6';
+                    } else {
+                        document.getElementById('flow_box_bat').style.boxShadow = 'none';
+                        document.getElementById('flow_box_bat').style.borderColor = '#e5e7eb';
+                    }
+                    
+                    if (genActive) {
+                        document.getElementById('flow_box_gen').style.boxShadow = '0 0 15px rgba(107, 114, 128, 0.8)';
+                        document.getElementById('flow_box_gen').style.borderColor = '#6b7280';
+                    } else {
+                        document.getElementById('flow_box_gen').style.boxShadow = 'none';
+                        document.getElementById('flow_box_gen').style.borderColor = '#e5e7eb';
+                    }
+                    
+                    // --- AI OPTIMIZER UPDATE ---
+                    if(data.ai_6h_summary && data.ai_decisions) {
+                        const s6 = data.ai_6h_summary;
+                        const d = data.ai_decisions;
+                        
+                        document.getElementById('ai_6h_load').innerText = (s6.total_load / 1000).toFixed(1);
+                        document.getElementById('ai_6h_solar').innerText = (s6.total_solar / 1000).toFixed(1);
+                        document.getElementById('ai_6h_deficit').innerText = (s6.deficit / 1000).toFixed(1);
+                        document.getElementById('ai_6h_soc').innerText = Math.round(s6.expected_soc);
+                        
+                        // Current Recommendation logic
+                        document.getElementById('rec_solar').innerHTML = d.use_solar ? '→ <span class="text-success">Use Solar</span>' : '→ <span class="text-danger">Solar OFF / Unavailable</span>';
+                        
+                        let batStr = 'Standby';
+                        if (d.charge_battery) batStr = '<span class="text-info">Charge Battery</span>';
+                        else if (d.discharge_battery) batStr = '<span class="text-warning">Discharge Battery</span>';
+                        document.getElementById('rec_bat').innerHTML = `→ ${batStr}`;
+                        
+                        document.getElementById('rec_gen').innerHTML = d.start_generator ? '→ <span class="text-danger">Generator ON</span>' : '→ <span class="text-secondary">Generator OFF</span>';
+                        
+                        let shedStr = '<span class="text-success">Non-critical Loads ON</span>';
+                        if (d.shed_important) shedStr = '<span class="text-danger">SHED Important + Non-critical</span>';
+                        else if (d.shed_non_critical) shedStr = '<span class="text-warning">SHED Non-critical Loads</span>';
+                        document.getElementById('rec_shed').innerHTML = `→ ${shedStr}`;
+                        
+                        
+                        // Render Schedule Table
+                        if (data.ai_schedule && data.ai_schedule.length > 0) {
+                            const tbody = document.getElementById('schedule_table_body');
+                            tbody.innerHTML = '';
+                            data.ai_schedule.forEach(row => {
+                                const tr = document.createElement('tr');
+                                
+                                let sourceColor = 'text-dark';
+                                let sourceIcon = 'fa-bolt';
+                                if (row.source.includes('Solar')) { sourceColor = 'text-warning'; sourceIcon = 'fa-sun'; }
+                                else if (row.source.includes('Generator')) { sourceColor = 'text-primary'; sourceIcon = 'fa-gas-pump'; }
+                                else if (row.source.includes('Battery')) { sourceColor = 'text-success'; sourceIcon = 'fa-car-battery'; }
+                                
+                                tr.innerHTML = `
+                                    <td class="fw-bold">${row.time}</td>
+                                    <td class="fw-bold ${sourceColor}"><i class="fas ${sourceIcon} me-2"></i> ${row.source}</td>
+                                    <td class="text-muted fw-bold">${row.action}</td>
+                                `;
+                                tbody.appendChild(tr);
+                            });
+                        }
+                    }
 
                     const bar = document.getElementById('bat-bar');
-                    bar.style.width = data.battery_pct + "%";
-                    if(data.battery_pct < 20) bar.className = "progress-bar bg-danger";
-                    else if(data.battery_pct < 50) bar.className = "progress-bar bg-warning";
+                    bar.style.width = (data.usable_soc || data.battery_pct) + "%";
+                    if(data.usable_soc < 20) bar.className = "progress-bar bg-danger";
+                    else if(data.usable_soc < 50) bar.className = "progress-bar bg-warning";
                     else bar.className = "progress-bar bg-success";
+
+                    const warning = document.getElementById('bat_warning');
+                    if (data.charge_allowed === false || data.discharge_allowed === false) {
+                        warning.style.display = 'block';
+                        if (!data.discharge_allowed) warning.innerText = '⚠️ Discharge Locked (Temp <-20C)';
+                        else warning.innerText = '⚠️ Charge Locked (Temp < 0C)';
+                    } else {
+                        warning.style.display = 'none';
+                    }
 
                     const badge = document.getElementById('status-indicator');
                     resetButtons();
@@ -229,6 +695,60 @@
                 });
             });
         }
+
+        // --- SIMULATOR LOGIC ---
+        function updateSim() {
+            const temp = document.getElementById('sim-temp').value;
+            const cloud = document.getElementById('sim-cloud').value;
+            const solar = document.getElementById('sim-solar').value;
+            const wind = document.getElementById('sim-wind').value;
+            const snow = document.getElementById('sim-snow').value;
+            const fuel = document.getElementById('sim-fuel').value;
+            
+            document.getElementById('val-temp').innerText = temp;
+            document.getElementById('val-cloud').innerText = cloud;
+            document.getElementById('val-solar').innerText = solar;
+            document.getElementById('val-wind').innerText = wind;
+            document.getElementById('val-fuel').innerText = fuel;
+
+            fetch('/api/simulator/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    temperature: temp, cloud_cover: cloud,
+                    solar_availability: solar, wind_speed: wind,
+                    snow: snow, fuel_pct: fuel, scenario: 'Custom'
+                })
+            }).then(r => r.json()).then(d => {
+                document.getElementById('current-scenario').innerText = 'Scenario: Custom';
+                updateDashboard();
+            });
+        }
+
+        function applyScenario(scenario) {
+            document.getElementById('current-scenario').innerText = 'Scenario: ' + scenario;
+            
+            let temp=-5, cloud=20, solar=100, wind=10, snow='None', fuel=100;
+            
+            switch(scenario) {
+                case 'Normal': temp = 5; cloud = 10; wind = 5; snow = 'None'; solar = 100; fuel = 100; break;
+                case 'Extreme Cold': temp = -25; cloud = 40; wind = 20; snow = 'Light'; solar = 80; fuel = 90; break;
+                case 'Polar Night': temp = -15; cloud = 60; wind = 30; snow = 'Light'; solar = 0; fuel = 80; break;
+                case 'Heavy Snow': temp = -10; cloud = 100; wind = 50; snow = 'Blizzard'; solar = 10; fuel = 70; break;
+                case 'Fuel Constraint': temp = -5; cloud = 80; wind = 15; snow = 'Light'; solar = 20; fuel = 5; break;
+            }
+
+            document.getElementById('sim-temp').value = temp;
+            document.getElementById('sim-cloud').value = cloud;
+            document.getElementById('sim-solar').value = solar;
+            document.getElementById('sim-wind').value = wind;
+            document.getElementById('sim-snow').value = snow;
+            document.getElementById('sim-fuel').value = fuel;
+
+            updateSim();
+            document.getElementById('current-scenario').innerText = 'Scenario: ' + scenario;
+        }
+
         setInterval(updateDashboard, 2000); updateDashboard(); loadChart('day');
     </script>
 </body>
